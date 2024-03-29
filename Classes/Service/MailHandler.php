@@ -11,7 +11,7 @@ namespace Extcode\Cart\Service;
 
 use Extcode\Cart\Domain\Model\Cart\Cart;
 use Extcode\Cart\Domain\Model\Order\Item;
-use Extcode\Cart\Event\Mail\AttachementEvent;
+use Extcode\Cart\Event\Mail\AttachmentEvent;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use TYPO3\CMS\Core\Log\LogManagerInterface;
@@ -325,16 +325,15 @@ class MailHandler implements SingletonInterface
 
     public function addAttachments(string $type, Item $orderItem, FluidEmail $email): void
     {
-        $attachmentEvent = new AttachementEvent($type, $orderItem);
+        $attachmentEvent = new AttachmentEvent($type, $orderItem);
         $this->eventDispatcher->dispatch($attachmentEvent);
 
         $attachments = $attachmentEvent->getAttachments();
 
         if (!empty($attachments)) {
             foreach ($attachments as $attachment) {
-                $attachmentFile = GeneralUtility::getFileAbsFileName($attachment);
-                if (file_exists($attachmentFile)) {
-                    $email->attachFromPath($attachmentFile);
+                if (file_exists($attachment)) {
+                    $email->attachFromPath($attachment);
                 }
             }
         }

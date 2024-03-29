@@ -11,96 +11,50 @@ namespace Extcode\Cart\Service;
 
 use Extcode\Cart\Domain\Model\Cart\Cart;
 use Extcode\Cart\Domain\Model\Order\Item;
-use Extcode\Cart\Hooks\MailAttachmentHookInterface;
+use Extcode\Cart\Event\Mail\AttachementEvent;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use TYPO3\CMS\Core\Log\LogManager;
+use TYPO3\CMS\Core\Log\LogManagerInterface;
 use TYPO3\CMS\Core\Mail\FluidEmail;
 use TYPO3\CMS\Core\Mail\Mailer;
 use TYPO3\CMS\Core\SingletonInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Configuration\ConfigurationManager;
+use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
 
 class MailHandler implements SingletonInterface
 {
-    /**
-     * @var LogManager
-     */
-    protected $logManager;
+    protected array $pluginSettings = [];
 
-    /**
-     * @var ConfigurationManager
-     */
-    protected $configurationManager;
+    protected ?Cart $cart = null;
 
-    /**
-     * @var array
-     */
-    protected $pluginSettings = [];
+    protected string $buyerEmailFrom = '';
 
-    /**
-     * @var Cart
-     */
-    protected $cart;
+    protected string $buyerEmailCc = '';
 
-    /**
-     * @var string
-     */
-    protected $buyerEmailFrom = '';
+    protected string $buyerEmailBcc = '';
 
-    /**
-     * @var string
-     */
-    protected $buyerEmailCc = '';
+    protected string $buyerEmailReplyTo = '';
 
-    /**
-     * @var string
-     */
-    protected $buyerEmailBcc = '';
+    protected string $sellerEmailFrom = '';
 
-    /**
-     * @var string
-     */
-    protected $buyerEmailReplyTo = '';
+    protected string $sellerEmailTo = '';
 
-    /**
-     * @var string
-     */
-    protected $sellerEmailFrom = '';
+    protected string $sellerEmailCc = '';
 
-    /**
-     * @var string
-     */
-    protected $sellerEmailTo = '';
-
-    /**
-     * @var string
-     */
-    protected $sellerEmailCc = '';
-
-    /**
-     * @var string
-     */
-    protected $sellerEmailBcc = '';
+    protected string $sellerEmailBcc = '';
 
     /**
      * MailHandler constructor
      */
-    public function __construct()
-    {
-        $this->logManager = GeneralUtility::makeInstance(
-            LogManager::class
-        );
-
-        $this->configurationManager = GeneralUtility::makeInstance(
-            ConfigurationManager::class
-        );
-
+    public function __construct(
+        private ConfigurationManagerInterface $configurationManager,
+        private EventDispatcherInterface $eventDispatcher,
+        private LogManagerInterface $logManager
+    ) {
         $this->setPluginSettings();
     }
 
-    /**
-     * Sets Plugin Settings
-     */
     public function setPluginSettings(): void
     {
         $this->pluginSettings =
@@ -200,137 +154,86 @@ class MailHandler implements SingletonInterface
         }
     }
 
-    /**
-     * @param Cart $cart
-     */
     public function setCart(Cart $cart): void
     {
         $this->cart = $cart;
     }
 
-    /**
-     * @param string $email
-     */
     public function setBuyerEmailFrom(string $email): void
     {
         $this->buyerEmailFrom = $email;
     }
 
-    /**
-     * @return string
-     */
     public function getBuyerEmailFrom(): string
     {
         return $this->buyerEmailFrom;
     }
 
-    /**
-     * @param string $buyerEmailCc
-     */
     public function setBuyerEmailCc(string $buyerEmailCc): void
     {
         $this->buyerEmailCc = $buyerEmailCc;
     }
 
-    /**
-     * @return string
-     */
     public function getBuyerEmailCc(): string
     {
         return $this->buyerEmailCc;
     }
 
-    /**
-     * @param string $buyerEmailBcc
-     */
     public function setBuyerEmailBcc(string $buyerEmailBcc): void
     {
         $this->buyerEmailBcc = $buyerEmailBcc;
     }
 
-    /**
-     * @return string
-     */
     public function getBuyerEmailBcc(): string
     {
         return $this->buyerEmailBcc;
     }
 
-    /**
-     * @param string $buyerEmailReplyTo
-     */
     public function setBuyerEmailReplyTo(string $buyerEmailReplyTo): void
     {
         $this->buyerEmailReplyTo = $buyerEmailReplyTo;
     }
 
-    /**
-     * @return string
-     */
     public function getBuyerEmailReplyTo(): string
     {
         return $this->buyerEmailReplyTo;
     }
 
-    /**
-     * @param string $email
-     */
     public function setSellerEmailFrom(string $email): void
     {
         $this->sellerEmailFrom = $email;
     }
 
-    /**
-     * @return string
-     */
     public function getSellerEmailFrom(): string
     {
         return $this->sellerEmailFrom;
     }
 
-    /**
-     * @param string $email
-     */
     public function setSellerEmailTo(string $email): void
     {
         $this->sellerEmailTo = $email;
     }
 
-    /**
-     * @return string
-     */
     public function getSellerEmailTo(): string
     {
         return $this->sellerEmailTo;
     }
 
-    /**
-     * @param string $sellerEmailCc
-     */
     public function setSellerEmailCc(string $sellerEmailCc): void
     {
         $this->sellerEmailCc = $sellerEmailCc;
     }
 
-    /**
-     * @return string
-     */
     public function getSellerEmailCc(): string
     {
         return $this->sellerEmailCc;
     }
 
-    /**
-     * @param string $sellerEmailBcc
-     */
     public function setSellerEmailBcc(string $sellerEmailBcc): void
     {
         $this->sellerEmailBcc = $sellerEmailBcc;
     }
 
-    /**
-     * @return string
-     */
     public function getSellerEmailBcc(): string
     {
         return $this->sellerEmailBcc;
@@ -338,8 +241,6 @@ class MailHandler implements SingletonInterface
 
     /**
      * Send a Mail to Buyer
-     *
-     * @param Item $orderItem
      */
     public function sendBuyerMail(Item $orderItem): void
     {
@@ -370,19 +271,7 @@ class MailHandler implements SingletonInterface
             $email->replyTo($this->getbuyerEmailReplyTo());
         }
 
-        if (
-            isset($GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['cart']['MailAttachmentsHook']) &&
-            !empty($GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['cart']['MailAttachmentsHook'])
-        ) {
-            foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['cart']['MailAttachmentsHook'] as $className) {
-                $mailAttachmentHook = GeneralUtility::makeInstance($className);
-                if (!$mailAttachmentHook instanceof MailAttachmentHookInterface) {
-                    throw new \UnexpectedValueException($className . ' must implement interface ' . MailAttachmentHookInterface::class, 123);
-                }
-
-                $email = $mailAttachmentHook->getMailAttachments($email, $orderItem, 'buyer');
-            }
-        }
+        $this->addAttachments('buyer', $orderItem, $email);
 
         if ($GLOBALS['TYPO3_REQUEST'] instanceof ServerRequestInterface) {
             $email->setRequest($GLOBALS['TYPO3_REQUEST']);
@@ -393,8 +282,6 @@ class MailHandler implements SingletonInterface
 
     /**
      * Send a Mail to Seller
-     *
-     * @param Item $orderItem
      */
     public function sendSellerMail(Item $orderItem): void
     {
@@ -427,25 +314,29 @@ class MailHandler implements SingletonInterface
             $email->bcc(...$bcc);
         }
 
-        if (
-            isset($GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['cart']['MailAttachmentsHook']) &&
-            !empty($GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['cart']['MailAttachmentsHook'])
-        ) {
-            foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['cart']['MailAttachmentsHook'] as $className) {
-                $mailAttachmentHook = GeneralUtility::makeInstance($className);
-
-                if (!$mailAttachmentHook instanceof MailAttachmentHookInterface) {
-                    throw new \UnexpectedValueException($className . ' must implement interface ' . MailAttachmentHookInterface::class, 123);
-                }
-
-                $email = $mailAttachmentHook->getMailAttachments($email, $orderItem, 'seller');
-            }
-        }
+        $this->addAttachments('seller', $orderItem, $email);
 
         if ($GLOBALS['TYPO3_REQUEST'] instanceof ServerRequestInterface) {
             $email->setRequest($GLOBALS['TYPO3_REQUEST']);
         }
 
         GeneralUtility::makeInstance(Mailer::class)->send($email);
+    }
+
+    public function addAttachments(string $type, Item $orderItem, FluidEmail $email): void
+    {
+        $attachmentEvent = new AttachementEvent($type, $orderItem);
+        $this->eventDispatcher->dispatch($attachmentEvent);
+
+        $attachments = $attachmentEvent->getAttachments();
+
+        if (!empty($attachments)) {
+            foreach ($attachments as $attachment) {
+                $attachmentFile = GeneralUtility::getFileAbsFileName($attachment);
+                if (file_exists($attachmentFile)) {
+                    $email->attachFromPath($attachmentFile);
+                }
+            }
+        }
     }
 }

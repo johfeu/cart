@@ -12,4 +12,3 @@ Information for developer how to extend the extension.
    :titlesonly:
 
    Events/Index
-   Hooks/Index
